@@ -1,8 +1,8 @@
 from flask import Flask
-from prometheus_monitoring import PrometheusMonitor
+from prometheus_metrics import PrometheusMetrics
 
 app = Flask(__name__)
-monitor = PrometheusMonitor(app)
+metrics = PrometheusMetrics(app)
 
 
 @app.route("/")

@@ -2,10 +2,10 @@ import time
 from flask import Flask, Response, request
 from prometheus_client import CollectorRegistry, generate_latest
 from prometheus_client import Histogram
-from prometheus_monitoring.decorators import do_not_track
+from prometheus_metrics.decorators import do_not_track
 
 
-class PrometheusMonitor:
+class PrometheusMetrics:
     def __init__(self, app, endpoint="/metrics"):
         self.app = None
         self.endpoint = endpoint
