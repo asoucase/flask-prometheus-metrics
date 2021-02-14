@@ -86,7 +86,7 @@ class PrometheusMetrics:
         return response
 
     def teardown_request_func(self, err):
-        if err is None:
+        if err is None or hasattr(request, "do_not_track"):
             return
 
         label_values = {
