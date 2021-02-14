@@ -1,8 +1,9 @@
+from functools import wraps
 import time
 from flask import Response, request
-from prometheus_client import CollectorRegistry, generate_latest
-from prometheus_client import Histogram, Counter
-from prometheus_metrics.decorators import do_not_track
+from prometheus_client.registry import CollectorRegistry
+from prometheus_client.exposition import generate_latest
+from prometheus_client import Histogram, Counter, Gauge
 
 
 class PrometheusMetrics:
@@ -19,13 +20,17 @@ class PrometheusMetrics:
         self.app = app
         self.register_endpoint()
         self.load_default_metrics()
-
-        self.app.before_request(self.before_request_func)
-        self.app.after_request(self.after_request_func)
-        self.app.teardown_request(self.teardown_request_func)
+        self.register_request_functions()
 
     def register_endpoint(self):
-        self.app.add_url_rule(self.endpoint, view_func=self.metrics_view)
+        @self.do_not_track()
+        def metrics_view():
+            data = generate_latest(self.registry)
+            r = Response(data)
+            r.headers.add_header("Content-Type", "text/plain")
+            return r
+
+        self.app.add_url_rule(self.endpoint, view_func=metrics_view)
 
     def load_default_metrics(self):
         labels = ("method", "path", "status")
@@ -54,43 +59,112 @@ class PrometheusMetrics:
         )
         self._register_metric("http_request_exceptions_total", request_exceptions_total)
 
+    def register_request_functions(self):
+        def before_request_func():
+            request.start_time = time.perf_counter()
+
+        self.app.before_request(before_request_func)
+
+        def after_request_func(response):
+            if hasattr(request, "do_not_track"):
+                return response
+
+            latency = time.perf_counter() - request.start_time
+            latency_labels = {
+                "method": request.method,
+                "path": request.path,
+                "status": response.status_code
+            }
+
+            self._metrics["http_request_duration_seconds"].labels(**latency_labels).observe(latency)
+            self._metrics["http_requests_total"].labels(**latency_labels).inc()
+
+            return response
+
+        self.app.after_request(after_request_func)
+
+        def teardown_request_func(err):
+            if err is None or hasattr(request, "do_not_track"):
+                return
+
+            label_values = {
+                "method": request.method,
+                "path": request.path,
+            }
+            self._metrics["http_request_exceptions_total"].labels(**label_values).inc()
+
+        self.app.teardown_request(teardown_request_func)
+
     def _register_metric(self, name, metric):
         if name in self._metrics:
             raise ValueError(f"Metric '{name}' already registered")
         self._metrics[name] = metric
 
-    @do_not_track()
-    def metrics_view(self):
-        data = generate_latest(self.registry)
-        r = Response(data)
-        r.headers.add_header("Content-Type", "text/plain")
-        return r
+    @staticmethod
+    def do_not_track():
+        def decorator(f):
+            @wraps(f)
+            def wrapper(*args, **kwargs):
+                request.do_not_track = True
+                return f(*args, **kwargs)
+            return wrapper
+        return decorator
 
-    def before_request_func(self):
-        request.start_time = time.perf_counter()
+    def get_metric(self, name):
+        if name not in self._metrics:
+            raise ValueError(f"'{name}' metric not found")
+        return self._metrics[name]
 
-    def after_request_func(self, response):
-        if hasattr(request, "do_not_track"):
-            return response
+    def counter(self, name, description, labels=None, after_request_func=lambda x: x.inc()):
+        c = Counter(
+            name,
+            description,
+            labelnames=labels.keys() if labels else tuple(),
+            registry=self.registry
+        )
+        return self._add_custom_metric(c, name, labels, after_request_func)
 
-        latency = time.perf_counter() - request.start_time
-        latency_labels = {
-           "method": request.method,
-           "path": request.path,
-           "status": response.status_code
-        }
+    def gauge(self, name, description, labels=None, after_request_func=lambda x: x.inc()):
+        g = Gauge(
+            name,
+            description,
+            labelnames=labels.keys() if labels else tuple(),
+            registry=self.registry
+        )
+        return self._add_custom_metric(g, name, labels, after_request_func)
 
-        self._metrics["http_request_duration_seconds"].labels(**latency_labels).observe(latency)
-        self._metrics["http_requests_total"].labels(**latency_labels).inc()
+    def histogram(self, name, description, labels=None, after_request_func=lambda x, t: x.observe(t)):
+        h = Histogram(
+            name,
+            description,
+            labelnames=labels.keys() if labels else tuple(),
+            registry=self.registry
+        )
+        return self._add_custom_metric(h, name, labels, after_request_func)
 
-        return response
+    def _add_custom_metric(self, metric, name, labels, after_request_func):
+        self._register_metric(name, metric)
 
-    def teardown_request_func(self, err):
-        if err is None or hasattr(request, "do_not_track"):
-            return
+        def decorator(f):
+            @wraps(f)
+            def wrapper(*args, **kwargs):
+                start_time = None
 
-        label_values = {
-            "method": request.method,
-            "path": request.path,
-        }
-        self._metrics["http_request_exceptions_total"].labels(**label_values).inc()
+                if isinstance(metric, Histogram) and callable(after_request_func):
+                    start_time = time.perf_counter()
+
+                resp = f(*args, **kwargs)
+
+                if isinstance(metric, (Counter, Gauge)) and callable(after_request_func):
+                    if labels:
+                        after_request_func(metric.labels(**labels))
+                    else:
+                        after_request_func(metric)
+
+                if isinstance(metric, Histogram) and callable(after_request_func):
+                    t = time.perf_counter() - start_time
+                    after_request_func(metric, t)
+
+                return resp
+            return wrapper
+        return decorator
