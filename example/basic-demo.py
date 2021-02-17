@@ -15,7 +15,7 @@ def error():
     raise ValueError(f"this is an error")
 
 
-@app.route("/error")
+@app.route("/err")
 @metrics.do_not_track()
 def do_not_track_error():
     raise RuntimeError(f"this is an error that isn't tracked")
