@@ -149,8 +149,8 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 5,
-        "w": 4,
+        "h": 7,
+        "w": 5,
         "x": 19,
         "y": 0
       },
@@ -170,7 +170,8 @@
       "pluginVersion": "7.4.1",
       "targets": [
         {
-          "expr": "task_queue",
+          "expr": "sum(task_queue{instance=\"python-app:6001\", job=\"my-application\", pid!=\"\"})\n",
+          "instant": false,
           "interval": "",
           "legendFormat": "",
           "refId": "A"
@@ -739,7 +740,9 @@
         }
       ],
       "thresholds": [],
+      "timeFrom": null,
       "timeRegions": [],
+      "timeShift": null,
       "title": "Requests under 250ms",
       "tooltip": {
         "shared": true,
@@ -795,5 +798,5 @@
   "timezone": "",
   "title": "Flask Prometheus Dashboard",
   "uid": "CW_L98PGk",
-  "version": 3
+  "version": 2
 }
