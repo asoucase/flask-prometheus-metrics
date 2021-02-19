@@ -1,10 +1,11 @@
 from functools import wraps
 import time
 from flask import Response, request
-from prometheus_client.registry import CollectorRegistry
-from prometheus_client.multiprocess import MultiProcessCollector
-from prometheus_client.exposition import generate_latest
 from prometheus_client import Histogram, Counter, Gauge
+from prometheus_client.exposition import generate_latest
+from prometheus_client.multiprocess import MultiProcessCollector
+from prometheus_client.process_collector import ProcessCollector
+from prometheus_client.registry import CollectorRegistry
 
 
 class PrometheusMetrics:
@@ -60,6 +61,8 @@ class PrometheusMetrics:
             registry=self.registry
         )
         self._register_metric("http_request_exceptions_total", request_exceptions_total)
+
+        self._register_metric("process_collector", ProcessCollector(registry=self.registry))
 
     def register_request_functions(self):
         def before_request_func():
