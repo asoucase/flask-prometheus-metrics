@@ -2,6 +2,7 @@ from functools import wraps
 import time
 from flask import Response, request
 from prometheus_client.registry import CollectorRegistry
+from prometheus_client.multiprocess import MultiProcessCollector
 from prometheus_client.exposition import generate_latest
 from prometheus_client import Histogram, Counter, Gauge
 
@@ -11,6 +12,7 @@ class PrometheusMetrics:
         self.app = None
         self.endpoint = endpoint
         self.registry = CollectorRegistry()
+        MultiProcessCollector(self.registry)
         self._metrics = {}
 
         if app is not None:

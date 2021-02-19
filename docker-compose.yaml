@@ -5,7 +5,10 @@ services:
     build: .
     image: python-app-prom
     ports:
-    - 5000:5000
+    - 6001:6001
+    environment:
+      UWSGI_MOUNT: /=/app/basic-demo.py
+      prometheus_multiproc_dir: /tmp/
 
   prometheus:
     image: prom/prometheus

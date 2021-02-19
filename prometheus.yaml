@@ -7,4 +7,4 @@ scrape_configs:
   honor_labels: true
   static_configs:
   - targets:
-    - "python-app:5000"
+    - "python-app:6001"
